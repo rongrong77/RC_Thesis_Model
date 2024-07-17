@@ -8,8 +8,8 @@ from dataset import DataSet
 from datasetbuilder import DataSetBuilder
 from evaluation import Evaluation
 from parametertuning import ParameterTuning
-from test import Test
-from train import Train
+from testing import Test
+from training import Train
 from utils.utils import get_activity_index_test, get_model_name_from_activites
 from visualization.wandb_plot import wandb_plotly_true_pred
 import pickle
@@ -22,6 +22,14 @@ from sklearn.model_selection import train_test_split
 
 wandb.init(project='OEMAL_Dataset_Transformer')
 
+def get_latest_checkpoint(model_dir, model_prefix):
+    checkpoints = [f for f in os.listdir(model_dir) if f.startswith(model_prefix)]
+    if not checkpoints:
+        return None, 0
+    checkpoints = sorted(checkpoints, key=lambda x: int(re.findall(r'\d+', x)[0]), reverse=True)
+    latest_checkpoint = checkpoints[0]
+    epoch = int(re.findall(r'\d+', latest_checkpoint)[0])
+    return os.path.join(model_dir, latest_checkpoint), epoch
 
 def run_main():
     torch.manual_seed(0)
@@ -74,11 +82,20 @@ def run_main():
             transformer_model.float()
             # Training the transformer model
             model_file = 'transformer_model.pt'
+            model_dir = './caches/trained_model/'
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            latest_checkpoint, start_epoch = get_latest_checkpoint(model_dir, 'checkpoint_epoch_')
+            
+            if load_model and latest_checkpoint:
+                print(f"Loading transformer model from {latest_checkpoint}")
+                transformer_model.load_state_dict(torch.load(latest_checkpoint))
             
             if load_model and os.path.isfile('./caches/trained_model/' + model_file):
                 print("Loading transformer model")
                 transformer_model.load_state_dict(torch.load(os.path.join('./caches/trained_model/', model_file)))
             else:
+                start_epoch = 0
                 # Training the transformer model
                 optimizer = torch.optim.Adam(transformer_model.parameters(), lr=config['learning_rate'])
                 criterion = torch.nn.MSELoss()
@@ -132,14 +149,14 @@ def run_main():
                 #Plot the loss
                 plt.figure()
                 plt.plot(range(1, num_epochs + 1), train_losses, label='Training Loss')
+                plt.plot(range(1, num_epochs + 1, 10), val_losses, label='Validation Loss')  # Adjust the range for val_losses
                 plt.xlabel('Epoch')
                 plt.ylabel('Loss')
-                plt.title('Training Loss Over Epochs')
+                plt.title('Training and Validation Loss Over Epochs')
                 plt.legend()
-                plt.savefig('training_loss_plot.png')
+                plt.savefig('training_val_loss_plot.png')
                 plt.show()
-                print("Training loss plot saved as training_loss_plot.png")
-                # Evaluate the transformer model
+                print("Training and validation loss plot saved as training_val_loss_plot.png")
                 
                 transformer_model.eval()
                 test_dataset = DataSetBuilder(kihadataset_test['x'], kihadataset_test['y'], kihadataset_test['labels'],
