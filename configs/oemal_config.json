@@ -52,9 +52,9 @@
   "tsai_res_dropout_p": 0.5,
   "tsai_fc_dropout_p": 0.5,
 
-  "learning_rate": 0.001,
+  "learning_rate": 0.005,
   "n_epoch": 100,
-  "batch_size": 64,
+  "batch_size": 32,
   "loss": "MSE",
   "loss_weight": [1, 1, 1],
   "nfold": 5
