@@ -1,0 +1,18 @@
+{
+    "selected_sensors": ["RS","ST","LS"],
+    "selected_imu_features": ["Acc_X","Acc_Y", "Acc_Z",
+                        "Gyro_X", "Gyro_Y", "Gyro_Z"],
+    "selected_opensim_labels": ["APIA"],
+    "classification": true,
+    "target_padding_length": 256,
+  
+    "tsai_d_model": 128,
+    "tsai_n_heads": 16,
+    "tsai_d_ff": 256,
+    "tsai_n_layers": 3,
+    "tsai_activation": "gelu",
+    "tsai_res_dropout_p": 0.1,
+    "tsai_fc_dropout_p": 0.5,
+    "device": "cpu"
+    
+  }
