@@ -5,7 +5,9 @@ from preprocessing.filter_imu import FilterIMU
 from preprocessing.filter_opensim import FilterOpenSim
 from preprocessing.remove_outlier import remove_outlier
 from preprocessing.resample import Resample
+from sklearn.preprocessing import LabelEncoder
 from preprocessing.segmentation.fixwindowsegmentation import FixWindowSegmentation
+import pickle
 
 
 class DataSet:
@@ -22,14 +24,24 @@ class DataSet:
             self.load_dataset()
             self.train_subjects = config['train_subjects']
             self.test_subjects = config['test_subjects']
+            self.valid_subjects = config['valid_subjects']
             self.train_activity = config['train_activity']
             self.test_activity = config['test_activity']
+            self.valid_activity = config['valid_activity']
         self.train_dataset = {}
         self.test_dataset = {}
+        self.valid_dataset = {}
 
     def load_dataset(self):
         getdata_handler = LoadPickleDataSet(self.config)
         self.x, self.y, self.labels = getdata_handler.run_get_dataset()
+        # with open('load_dataset.pkl', 'wb') as f:
+        #     pickle.dump({
+        #         'x': self.x,
+        #         'y': self.y,
+        #         'labels': self.labels,
+        #     }, f)
+        # print("load_dataset saved to load_dataset.pkl")
         self._preprocess()
 
     def _preprocess(self):
@@ -39,10 +51,10 @@ class DataSet:
         # #     self.x, self.y, self.labels = self.run_resample_signal(self.x, self.y, self.labels)
         # #     print("After resampling: ", len(self.x), len(self.y))
         if self.config['opensim_filter']:
-            filteropensim_handler = FilterOpenSim(self.y, lowcut=6, fs=100, order=2)
+            filteropensim_handler = FilterOpenSim(self.y, lowcut=6, fs=200, order=2)
             self.y = filteropensim_handler.run_lowpass_filter()
         if self.config['imu_filter']:
-            filterimu_handler = FilterIMU(self.x, lowcut=10, fs=100, order=2)
+            filterimu_handler = FilterIMU(self.x, lowcut=10, fs=200, order=2)
             self.x = filterimu_handler.run_lowpass_filter()
 
     def run_resample_signal(self, x, y, labels):
@@ -72,22 +84,42 @@ class DataSet:
         self.y = np.concatenate(self.y, axis=0)
 
    
-    def run_dataset_split(self):
+    def run_dataset_split(self, valid_subjects):
         if set(self.test_subjects).issubset(self.train_subjects):
-             train_labels = self.labels[~self.labels['subject'].isin(self.test_subjects)]
-             test_labels = self.labels[(self.labels['subject'].isin(self.test_subjects))]
+            train_labels = self.labels[~self.labels['subject'].isin(self.test_subjects)]
+            test_labels = self.labels[(self.labels['subject'].isin(self.test_subjects))]
         else:
-             train_labels = self.labels[self.labels['subject'].isin(self.train_subjects)]
-             test_labels = self.labels[(self.labels['subject'].isin(self.test_subjects))]
-        print(train_labels['subject'].unique())
-        print(test_labels['subject'].unique())
+            train_labels = self.labels[self.labels['subject'].isin(self.train_subjects)]
+            test_labels = self.labels[(self.labels['subject'].isin(self.test_subjects))]
 
-    
+        # Split the train_labels into actual train and validation sets
+        if set(valid_subjects).issubset(train_labels['subject'].unique()):
+            val_labels = train_labels[train_labels['subject'].isin(valid_subjects)]
+            train_labels = train_labels[~train_labels['subject'].isin(valid_subjects)]
+        else:
+            raise ValueError("Validation subjects must be a subset of training subjects")
+
+        if self.classification:
+            # Encode activity labels
+            label_encoder = LabelEncoder()
+            train_labels['activity'] = label_encoder.fit_transform(train_labels['activity'])
+            test_labels['activity'] = label_encoder.transform(test_labels['activity'])
+            val_labels['activity'] = label_encoder.transform(val_labels['activity'])
+
+            train_y = train_labels['activity'].values
+            test_y = test_labels['activity'].values
+            valid_y = val_labels['activity'].values
+        else:
+            train_y = [self.y[i] for i in train_labels.index.values]
+            test_y = [self.y[i] for i in test_labels.index.values]
+            valid_y = [self.y[i] for i in val_labels.index.values]
 
         train_index = train_labels.index.values
         test_index = test_labels.index.values
+        valid_index = val_labels.index.values
         print('training length', len(train_index))
-        print('test length', len(test_index))
+        print('testing length', len(test_index))
+        print('validate length', len(valid_index))
 
         train_x = [self.x[i] for i in train_index]
         train_y = [self.y[i] for i in train_index]
@@ -105,7 +137,12 @@ class DataSet:
         self.test_dataset['y'] = test_y
         self.test_dataset['labels'] = test_labels.reset_index(drop=True)
 
-        del train_labels, test_labels, train_x, train_y, test_x, test_y
-        return self.train_dataset,  self.test_dataset
+        valid_x = [self.x[i] for i in valid_index]
+        valid_y = [self.y[i] for i in valid_index]
+        self.valid_dataset['x'] = valid_x
+        self.valid_dataset['y'] = valid_y
+        self.valid_dataset['labels'] = val_labels.reset_index(drop=True)
+        del train_labels, test_labels,val_labels, train_x, train_y,valid_x,valid_y, test_x, test_y
+        return self.train_dataset,  self.test_dataset, self.valid_dataset
 
 
